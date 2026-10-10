@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
 # (--system-site-packages below), so the three environments differ only in
 # the libraries that actually conflict (mainly the transformers version).
 RUN pip install "setuptools<81" wheel cython numpy==1.26.4
-RUN pip install torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cu121
+RUN pip install --default-timeout=300 --retries 5 torch==2.3.1 torchaudio==2.3.1 --extra-index-url https://download.pytorch.org/whl/cu121
 RUN pip install runpod huggingface_hub
 
 # CosyVoice isn't pip-installable; it's vendored as source (see upstream docs).
