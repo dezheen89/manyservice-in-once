@@ -1,3 +1,7 @@
+# The Whisper model repo is private, so instead of downloading it we copy the
+# weights from the existing public image that already has them baked in.
+FROM dezheen89/whisper-turbo-ctranslate:v3 AS whisper_model
+
 FROM python:3.10-slim
 
 WORKDIR /app
@@ -50,7 +54,6 @@ RUN /venvs/whisper/bin/python -c "import transformers, faster_whisper, ctranslat
 # up in this public image's layers or `docker history`.
 ARG TTS_MODEL_ID=computeram/cosyvoice3-badini-tts
 ARG W2V_MODEL_ID=computeram/badini-w2v-bert-normalized
-ARG WHISPER_MODEL_ID=BadiniSpeechNLP/whisper-turbo-ctranslate
 COPY downloads/ /app/downloads/
 
 RUN --mount=type=secret,id=hf_token,required=false \
@@ -61,9 +64,10 @@ RUN --mount=type=secret,id=hf_token,required=false \
     HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || true)" MODEL_ID="$W2V_MODEL_ID" \
     /venvs/w2v/bin/python /app/downloads/download_w2v.py
 
-RUN --mount=type=secret,id=hf_token,required=false \
-    HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || true)" MODEL_ID="$WHISPER_MODEL_ID" \
-    python /app/downloads/download_whisper.py
+# Whisper weights come from the stage at the top of this file. Same path as in
+# that image (/app/model_cache), because its MODEL_PATH file records absolute
+# paths.
+COPY --from=whisper_model /app/model_cache /app/model_cache
 
 # Bundled TTS reference voices (natural + 5 emotions).
 COPY prompt-*.wav prompt-*.txt /app/

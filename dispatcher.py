@@ -44,8 +44,8 @@ SERVICES = {
     "whisper": {
         "python": "/venvs/whisper/bin/python",
         "env": {
-            "MODEL_DIR": "/app/models/whisper",
-            "HF_HOME": "/app/models/whisper",
+            "MODEL_DIR": "/app/model_cache",
+            "HF_HOME": "/app/model_cache",
             "MODEL_ID": "BadiniSpeechNLP/whisper-turbo-ctranslate",
             "PYTHONPATH": "/app/services/whisper",
         },
