@@ -1,0 +1,30 @@
+name: Keep the previous image as :old
+
+# One-off: gives the previous working image a permanent tag so it can be
+# restored at any time. Runs only when this file changes.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/retag-old.yml"
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Tag the previous image as :old
+        run: |
+          docker buildx imagetools create \
+            --tag dezheen89/manyservice-in-once:old \
+            dezheen89/manyservice-in-once@sha256:c9ccb0d9e851a9d49c802ea3a684cdf9f1b7c967857e94cef5887a49509a43e5
+          docker buildx imagetools inspect dezheen89/manyservice-in-once:old | head -5
