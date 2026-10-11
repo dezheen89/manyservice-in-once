@@ -109,22 +109,39 @@ def chunk_text(text, soft_words=CHUNK_SOFT_WORDS, hard_words=CHUNK_HARD_WORDS):
 
 
 _model_fp16 = None
+_load_report = None  # set when this process loads the model; returned once with the next job
 
 
 def get_model(fp16=False):
-    global _model, _model_fp16
+    global _model, _model_fp16, _load_report
     with _lock:
         if _model is None or _model_fp16 != fp16:
             _model = None
             torch.cuda.empty_cache()
             print(f"[LOAD] Loading CosyVoice3 from {MODEL_DIR} (fp16={fp16})...", flush=True)
+            t_load = time.perf_counter()
+            profiler = None
+            if os.getenv("PROFILE_LOAD") == "1":
+                import cProfile
+                profiler = cProfile.Profile()
+                profiler.enable()
             _model = AutoModel(model_dir=MODEL_DIR, fp16=fp16)
+            report = {"model_load_s": round(time.perf_counter() - t_load, 1)}
+            if profiler is not None:
+                import io as _io
+                import pstats
+                profiler.disable()
+                buf = _io.StringIO()
+                pstats.Stats(profiler, stream=buf).sort_stats("cumulative").print_stats(28)
+                report["load_profile"] = buf.getvalue()
+            _load_report = report
             _model_fp16 = fp16
-            print("[LOAD] Model ready.", flush=True)
+            print(f"[LOAD] Model ready in {report['model_load_s']} s.", flush=True)
     return _model
 
 
 def handler(job):
+    global _load_report
     try:
         input_data = job.get("input", {})
         text = input_data.get("text", "")
@@ -196,13 +213,17 @@ def handler(job):
 
         audio_b64 = base64.b64encode(audio_bytes).decode()
 
-        return {
+        result = {
             "ok": True,
             "audio_base64": audio_b64,
             "sample_rate": cosy.sample_rate,
             "format": audio_format,
             "inference_ms": inference_ms,
         }
+        if _load_report:
+            result.update(_load_report)
+            _load_report = None
+        return result
     except Exception:
         print(traceback.format_exc(), flush=True)
         return {"ok": False, "error": "Internal server error"}

@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import threading
+import time
 import traceback
 
 import runpod
@@ -102,14 +103,20 @@ def handler(job):
 
     with _locks[name]:
         try:
+            was_running = name in _procs and _procs[name].poll() is None
+            t_start = time.perf_counter()
             proc = _get_proc(name)
+            start_s = round(time.perf_counter() - t_start, 1)
             proc.stdin.write(json.dumps({"id": job.get("id"), "input": inp}) + "\n")
             proc.stdin.flush()
             line = proc.stdout.readline()
             if not line:
                 _procs.pop(name, None)
                 return {"ok": False, "error": f"Service '{name}' stopped unexpectedly. Please retry."}
-            return json.loads(line)
+            result = json.loads(line)
+            if not was_running and isinstance(result, dict):
+                result["service_start_s"] = start_s  # time to start this service's process (imports), before model load
+            return result
         except Exception:
             print(traceback.format_exc(), flush=True)
             _procs.pop(name, None)

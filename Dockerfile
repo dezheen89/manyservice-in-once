@@ -10,7 +10,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     git \
     ffmpeg \
     sox \
@@ -28,7 +29,8 @@ RUN pip install --default-timeout=300 --retries 5 torch==2.3.1 torchaudio==2.3.1
 RUN pip install runpod huggingface_hub
 
 # CosyVoice isn't pip-installable; it's vendored as source (see upstream docs).
-RUN git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git /app/CosyVoice
+RUN git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git /app/CosyVoice \
+ && find /app/CosyVoice -name .git -prune -exec rm -rf {} +
 
 RUN python -m venv --system-site-packages /venvs/tts \
  && python -m venv --system-site-packages /venvs/w2v \

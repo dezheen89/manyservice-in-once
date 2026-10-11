@@ -24,4 +24,20 @@ for attempt in range(1, 6):
             sys.exit(1)
         time.sleep(30 * attempt)
 
+# The worker loads this model as float16 anyway (torch_dtype=float16), so store the
+# weights as float16 now: the cast is the same round-to-nearest, results are identical,
+# and the image is about 1.2 GB smaller. The file is rewritten in place (it sits behind a
+# symlink in the Hugging Face cache) so the worker's loading code does not change.
+import os
+import torch
+from safetensors.torch import load_file, save_file
+
+for path in glob.glob(cache + "/models--*/snapshots/*/model.safetensors"):
+    real = os.path.realpath(path)
+    before = os.path.getsize(real)
+    tensors = load_file(real)
+    half = {k: (v.half() if v.dtype == torch.float32 else v) for k, v in tensors.items()}
+    save_file(half, real, metadata={"format": "pt"})
+    print(f"Converted {path}: {before/1e9:.2f} GB -> {os.path.getsize(real)/1e9:.2f} GB", flush=True)
+
 print(f"Done - {len(glob.glob(cache + '/**/*', recursive=True))} files in cache.", flush=True)
