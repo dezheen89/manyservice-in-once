@@ -29,7 +29,22 @@ RUN pip install "setuptools<81" wheel cython numpy==1.26.4
 # torch 2.7.1 + CUDA 12.8: the first builds with kernels for Blackwell GPUs (sm_120).
 # The old torch 2.3.1/cu121 cannot start on them ("CUDA initialization failed").
 RUN pip install --default-timeout=300 --retries 5 torch==2.7.1+cu128 torchaudio==2.7.1+cu128 --extra-index-url https://download.pytorch.org/whl/cu128
-RUN python -c "import torch; a=torch.cuda.get_arch_list(); print('torch', torch.__version__, a); assert 'sm_120' in a, 'torch build has no Blackwell (sm_120) kernels'"
+# The build machine has no GPU, so this only inspects what was compiled into the wheel. It always
+# prints the details, and fails only on a wrong CUDA version or an arch list that lacks sm_120.
+RUN python - <<'PY'
+import torch
+cuda = torch.version.cuda
+try:
+    flags = torch._C._cuda_getArchFlags() or ""
+except Exception as e:
+    flags = ""
+    print("could not read arch flags:", repr(e))
+archs = torch.cuda.get_arch_list()
+print("torch", torch.__version__, "cuda", cuda, "| arch flags:", flags, "| arch list:", archs)
+assert cuda and cuda.startswith("12.8"), f"expected a CUDA 12.8 torch build, got {cuda}"
+if flags or archs:
+    assert "sm_120" in flags or "sm_120" in archs, "torch build has no Blackwell (sm_120) kernels"
+PY
 RUN pip install runpod huggingface_hub
 
 # CosyVoice isn't pip-installable; it's vendored as source (see upstream docs).
