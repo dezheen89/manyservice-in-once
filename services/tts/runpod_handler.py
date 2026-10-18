@@ -16,7 +16,7 @@ speaker actually saying something in that emotional register is used as the
 zero-shot clone target, which is the only way this model expresses it.
 
 Input:
-    {"text": "...", "emotion": "natural"|"angry"|"sad"|"happy"|"fear"|"surprise"?,
+    {"text": "...", "voice": "hayfa"|"abdullah"|"bafreen"?, "emotion": "natural"|"angry"|"sad"|"happy"|"fear"|"surprise"?,
      "ref_audio": "<base64 wav>"?, "ref_text": "..."?, "speed": 1.0?}
 Output:
     {"ok": true, "audio_base64": "...", "sample_rate": N, "format": "wav"}
@@ -63,6 +63,17 @@ EMOTION_REFS = {"natural": (DEFAULT_REF_WAV, DEFAULT_REF_TEXT)}
 for _emotion, _base in EMOTION_FILES.items():
     with open(f"{_base}.txt", encoding="utf-8") as _f:
         EMOTION_REFS[_emotion] = (f"{_base}.wav", _f.read().strip())
+
+# Extra speakers: five emotion references each (no "natural" recording exists
+# for them). Files are /app/prompt-<voice>-<emotion>.wav/.txt.
+EXTRA_VOICES = ("abdullah", "bafreen")
+VOICE_REFS = {"hayfa": EMOTION_REFS}
+for _voice in EXTRA_VOICES:
+    VOICE_REFS[_voice] = {}
+    for _emotion in EMOTION_FILES:
+        _base = f"/app/prompt-{_voice}-{_emotion}"
+        with open(f"{_base}.txt", encoding="utf-8") as _f:
+            VOICE_REFS[_voice][_emotion] = (f"{_base}.wav", _f.read().strip())
 
 _model = None
 _lock = threading.Lock()
@@ -148,10 +159,14 @@ def handler(job):
         if not text:
             return {"ok": False, "error": "Missing 'text' in input."}
 
+        voice = (input_data.get("voice") or "hayfa").lower()
+        if voice not in VOICE_REFS:
+            return {"ok": False, "error": f"Unknown voice '{voice}'. Valid: {sorted(VOICE_REFS)}."}
+        voice_refs = VOICE_REFS[voice]
         emotion = input_data.get("emotion") or "natural"
-        if emotion not in EMOTION_REFS:
-            return {"ok": False, "error": f"Unknown emotion '{emotion}'. Valid: {sorted(EMOTION_REFS)}."}
-        ref_wav, ref_text = EMOTION_REFS[emotion]
+        if emotion not in voice_refs:
+            return {"ok": False, "error": f"Unknown emotion '{emotion}' for voice '{voice}'. Valid: {sorted(voice_refs)}."}
+        ref_wav, ref_text = voice_refs[emotion]
 
         # An explicit custom reference still overrides the emotion pick —
         # emotion selection only matters when the caller didn't supply one.
