@@ -53,6 +53,14 @@ SERVICES = {
     },
 }
 
+# The CUDA libraries that come with the pip torch wheel (cuDNN 9, cuBLAS 12) live in
+# site-packages/nvidia/*/lib. ctranslate2 (Whisper) must be able to find them.
+import glob  # noqa: E402
+
+_NVIDIA_LIBS = ":".join(sorted(glob.glob("/usr/local/lib/python3*/site-packages/nvidia/*/lib")))
+for _cfg in SERVICES.values():
+    _cfg["env"]["LD_LIBRARY_PATH"] = _NVIDIA_LIBS + ":" + os.environ.get("LD_LIBRARY_PATH", "")
+
 _procs = {}
 _locks = {name: threading.Lock() for name in SERVICES}
 

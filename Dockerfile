@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # The Whisper model repo is private, so instead of downloading it we copy the
 # weights from the existing public image that already has them baked in.
 FROM dezheen89/whisper-turbo-ctranslate:v3 AS whisper_model
@@ -25,12 +26,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # (--system-site-packages below), so the three environments differ only in
 # the libraries that actually conflict (mainly the transformers version).
 RUN pip install "setuptools<81" wheel cython numpy==1.26.4
-RUN pip install --default-timeout=300 --retries 5 torch==2.3.1 torchaudio==2.3.1 --extra-index-url https://download.pytorch.org/whl/cu121
+# torch 2.7.1 + CUDA 12.8: the first builds with kernels for Blackwell GPUs (sm_120).
+# The old torch 2.3.1/cu121 cannot start on them ("CUDA initialization failed").
+RUN pip install --default-timeout=300 --retries 5 torch==2.7.1+cu128 torchaudio==2.7.1+cu128 --extra-index-url https://download.pytorch.org/whl/cu128
+RUN python -c "import torch; a=torch.cuda.get_arch_list(); print('torch', torch.__version__, a); assert 'sm_120' in a, 'torch build has no Blackwell (sm_120) kernels'"
 RUN pip install runpod huggingface_hub
 
 # CosyVoice isn't pip-installable; it's vendored as source (see upstream docs).
 RUN git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git /app/CosyVoice \
  && find /app/CosyVoice -name .git -prune -exec rm -rf {} +
+
+# onnxruntime-gpu 1.18 needs cuDNN 8 and has no Blackwell kernels. Run CosyVoice's two small ONNX
+# models (speaker embedding, speech tokenizer) on the CPU instead; they only process the short
+# reference clip once per request.
+RUN python - <<'PY'
+import re
+p = "/app/CosyVoice/cosyvoice/cli/frontend.py"
+s = open(p, encoding="utf-8").read()
+pat = r'providers=\["CUDAExecutionProvider" if torch\.cuda\.is_available\(\) else\s*"CPUExecutionProvider"\]'
+s2 = re.sub(pat, 'providers=["CPUExecutionProvider"]', s)
+assert s2 != s, "frontend.py patch did not match"
+open(p, "w", encoding="utf-8").write(s2)
+print("patched frontend.py: ONNX sessions on CPU")
+PY
 
 RUN python -m venv --system-site-packages /venvs/tts \
  && python -m venv --system-site-packages /venvs/w2v \
