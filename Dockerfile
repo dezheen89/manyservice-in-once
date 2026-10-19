@@ -72,6 +72,12 @@ RUN python -m venv --system-site-packages /venvs/tts \
 # ── Text-to-speech: CosyVoice3 (transformers 4.51.3) ──────────────────────
 COPY reqs/tts.txt /app/reqs/tts.txt
 RUN /venvs/tts/bin/pip install --no-build-isolation --default-timeout=200 -r /app/reqs/tts.txt
+# openai-whisper pins triton<3, which makes pip replace torch 2.7.1 with 2.3.1 inside this venv
+# (and 2.3.1 cannot start on newer drivers). Install it without its dependency pins; its other
+# dependencies are listed here.
+RUN /venvs/tts/bin/pip install --no-build-isolation --no-deps openai-whisper==20231117  && /venvs/tts/bin/pip install tiktoken numba more-itertools tqdm
+# Guard: the venv must keep using the shared torch 2.7.1+cu128.
+RUN /venvs/tts/bin/python -c "import torch; print('tts venv torch', torch.__version__); assert torch.__version__.startswith('2.7.1'), torch.__version__; import whisper; print('whisper import ok')"
 RUN /venvs/tts/bin/python -c "import sys; sys.path.extend(['/app/CosyVoice', '/app/CosyVoice/third_party/Matcha-TTS']); import runpod; from cosyvoice.cli.cosyvoice import AutoModel; print('tts import check ok')"
 
 # ── Speech-to-text: w2v-bert (transformers 4.41.2) ────────────────────────

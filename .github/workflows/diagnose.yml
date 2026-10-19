@@ -26,6 +26,8 @@ jobs:
         run: |
           python -m venv --system-site-packages /tmp/tts
           /tmp/tts/bin/pip install --no-build-isolation --default-timeout=200 -r reqs/tts.txt 2>&1 | tail -n 60 > /tmp/pip_tts.log || true
+          /tmp/tts/bin/pip install --no-build-isolation --no-deps openai-whisper==20231117 >> /tmp/pip_tts.log 2>&1 || true
+          /tmp/tts/bin/pip install tiktoken numba more-itertools tqdm >> /tmp/pip_tts.log 2>&1 || true
           /tmp/tts/bin/pip list 2>/dev/null | grep -iE "^(torch|torchaudio|onnx|onnxruntime|lightning|transformers|numpy|diffusers|x-transformers|openai-whisper|librosa|pyworld|modelscope|wetext) " > /tmp/pip_list.txt || true
           msg=$(cat /tmp/pip_list.txt | sed ':a;N;$!ba;s/\n/%0A/g')
           echo "::notice title=installed versions::$msg"
