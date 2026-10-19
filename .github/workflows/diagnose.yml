@@ -1,0 +1,41 @@
+name: Diagnose TTS import (temporary)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/diagnose.yml"
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: System packages
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg sox libsox-dev libsndfile1 build-essential
+      - name: Install base + torch
+        run: |
+          pip install "setuptools<81" wheel cython numpy==1.26.4
+          pip install --default-timeout=300 --retries 5 torch==2.7.1+cu128 torchaudio==2.7.1+cu128 --extra-index-url https://download.pytorch.org/whl/cu128
+          pip install runpod huggingface_hub
+          git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git /tmp/CosyVoice
+      - name: Install TTS requirements
+        run: |
+          python -m venv --system-site-packages /tmp/tts
+          /tmp/tts/bin/pip install --no-build-isolation --default-timeout=200 -r reqs/tts.txt 2>&1 | tail -n 60 > /tmp/pip_tts.log || true
+          /tmp/tts/bin/pip list 2>/dev/null | grep -iE "^(torch|torchaudio|onnx|onnxruntime|lightning|transformers|numpy|diffusers|x-transformers|openai-whisper|librosa|pyworld|modelscope|wetext) " > /tmp/pip_list.txt || true
+          msg=$(cat /tmp/pip_list.txt | sed ':a;N;$!ba;s/\n/%0A/g')
+          echo "::notice title=installed versions::$msg"
+          msg=$(tail -n 25 /tmp/pip_tts.log | cut -c1-300 | sed ':a;N;$!ba;s/\n/%0A/g')
+          echo "::notice title=pip tail::$msg"
+      - name: Import check (prints the real error)
+        run: |
+          set +e
+          /tmp/tts/bin/python -c "import sys; sys.path.extend(['/tmp/CosyVoice', '/tmp/CosyVoice/third_party/Matcha-TTS']); import runpod; from cosyvoice.cli.cosyvoice import AutoModel; print('tts import check ok')" > /tmp/imp.log 2>&1
+          rc=$?
+          msg=$(tail -n 25 /tmp/imp.log | cut -c1-400 | sed ':a;N;$!ba;s/\n/%0A/g')
+          if [ $rc -ne 0 ]; then echo "::error title=import failed::$msg"; else echo "::notice title=import ok::$msg"; fi
+          exit $rc
