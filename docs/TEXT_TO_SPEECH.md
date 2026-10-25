@@ -6,12 +6,13 @@ Badini Kurdish TTS on the BLSP site (badiniai.uod.ac/blsp), built on CosyVoice3 
 | Voice | Gender | Emotions |
 |---|---|---|
 | Hayfa | female | natural, angry, sad, happy, fear, surprise |
-| Abdullah | male | angry, sad, happy, fear, surprise |
-| Bafreen | female | angry, sad, happy, fear, surprise |
+| Abdullah | male | natural, angry, sad, happy, fear, surprise |
+| Bafreen | female | natural, angry, sad, happy, fear, surprise |
 
 CosyVoice3 has no emotion switch. "Emotion" = which real recording of that speaker is used as the
 reference clip. Reference clips: `prompt-<voice>-<emotion>.wav` + `.txt` (exact transcript) in the repo root
-(Hayfa: `prompt-hayfa` = natural, `prompt-<emotion>` for the others). Abdullah and Bafreen have no neutral recording.
+(Hayfa: `prompt-hayfa` = natural, `prompt-<emotion>` for the others). Abdullah's and Bafreen's `natural` clips are calm sentences
+from their training data (not from the emotion set).
 
 ## Model weights
 Only `llm.pt` is fine-tuned (trained on all three speakers). It is in

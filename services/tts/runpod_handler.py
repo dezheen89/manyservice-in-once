@@ -64,13 +64,13 @@ for _emotion, _base in EMOTION_FILES.items():
     with open(f"{_base}.txt", encoding="utf-8") as _f:
         EMOTION_REFS[_emotion] = (f"{_base}.wav", _f.read().strip())
 
-# Extra speakers: five emotion references each (no "natural" recording exists
-# for them). Files are /app/prompt-<voice>-<emotion>.wav/.txt.
+# Extra speakers: "natural" plus five emotion references each.
+# Files are /app/prompt-<voice>-<emotion>.wav/.txt ("natural" = a calm training-data clip).
 EXTRA_VOICES = ("abdullah", "bafreen")
 VOICE_REFS = {"hayfa": EMOTION_REFS}
 for _voice in EXTRA_VOICES:
     VOICE_REFS[_voice] = {}
-    for _emotion in EMOTION_FILES:
+    for _emotion in ("natural", *EMOTION_FILES):
         _base = f"/app/prompt-{_voice}-{_emotion}"
         with open(f"{_base}.txt", encoding="utf-8") as _f:
             VOICE_REFS[_voice][_emotion] = (f"{_base}.wav", _f.read().strip())
@@ -151,6 +151,24 @@ def get_model(fp16=False):
     return _model
 
 
+def _generate_piece(cosy, piece, prompt, ref_wav, speed):
+    """Run one text piece through the model and return its audio tensors.
+
+    Now and then the model returns empty or almost empty audio for a normal sentence (random: the same
+    request works on the next try). If the audio is far shorter than the text needs, try again, up to
+    three times in total, and keep the longest result."""
+    min_seconds = max(0.3, 0.03 * len(piece) / speed)
+    best, best_seconds = [], -1.0
+    for _ in range(3):
+        outs = [out["tts_speech"] for out in cosy.inference_zero_shot(piece, prompt, ref_wav, stream=False, speed=speed)]
+        seconds = sum(o.shape[-1] for o in outs) / cosy.sample_rate
+        if seconds > best_seconds:
+            best, best_seconds = outs, seconds
+        if seconds >= min_seconds:
+            break
+    return best
+
+
 def handler(job):
     global _load_report
     try:
@@ -196,8 +214,7 @@ def handler(job):
         # a plain `break` after the first yield silently discarded the rest).
         speech_pieces = []
         for piece in chunk_text(text):
-            for out in cosy.inference_zero_shot(piece, prompt, ref_wav, stream=False, speed=speed):
-                speech_pieces.append(out["tts_speech"])
+            speech_pieces.extend(_generate_piece(cosy, piece, prompt, ref_wav, speed))
         if not speech_pieces:
             return {"ok": False, "error": "Model produced no output."}
         speech = speech_pieces[0] if len(speech_pieces) == 1 else torch.cat(speech_pieces, dim=1)
