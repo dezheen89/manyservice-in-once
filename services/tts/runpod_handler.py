@@ -154,18 +154,25 @@ def get_model(fp16=False):
 def _generate_piece(cosy, piece, prompt, ref_wav, speed):
     """Run one text piece through the model and return its audio tensors.
 
-    Now and then the model returns empty or almost empty audio for a normal sentence (random: the same
-    request works on the next try). If the audio is far shorter than the text needs, try again, up to
-    three times in total, and keep the longest result."""
+    Now and then the model fails at random for a normal sentence: it raises an error, or returns empty or
+    almost empty audio (the same request works on the next try). If that happens, try again, up to three
+    times in total, and keep the longest result. Only if every attempt raises is the last error re-raised."""
     min_seconds = max(0.3, 0.03 * len(piece) / speed)
-    best, best_seconds = [], -1.0
-    for _ in range(3):
-        outs = [out["tts_speech"] for out in cosy.inference_zero_shot(piece, prompt, ref_wav, stream=False, speed=speed)]
+    best, best_seconds, last_error = [], -1.0, None
+    for attempt in range(3):
+        try:
+            outs = [out["tts_speech"] for out in cosy.inference_zero_shot(piece, prompt, ref_wav, stream=False, speed=speed)]
+        except Exception as e:
+            last_error = e
+            print(f"[tts] attempt {attempt + 1} failed: {type(e).__name__}: {e}\n{traceback.format_exc()}", flush=True)
+            continue
         seconds = sum(o.shape[-1] for o in outs) / cosy.sample_rate
         if seconds > best_seconds:
             best, best_seconds = outs, seconds
         if seconds >= min_seconds:
             break
+    if best_seconds < 0 and last_error is not None:
+        raise last_error
     return best
 
 
@@ -256,9 +263,9 @@ def handler(job):
             result.update(_load_report)
             _load_report = None
         return result
-    except Exception:
+    except Exception as e:
         print(traceback.format_exc(), flush=True)
-        return {"ok": False, "error": "Internal server error"}
+        return {"ok": False, "error": "Internal server error", "detail": f"{type(e).__name__}: {str(e)[:300]}"}
 
 
 runpod.serverless.start({"handler": handler})
