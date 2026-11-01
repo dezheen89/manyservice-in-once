@@ -7,6 +7,7 @@ which real recording of the speaker is used as the reference (bundled as /app/pr
 
 Input (send with "service": "omnivoice"):
     {"text": "...", "voice": "hayfa"|"abdullah"|"bafreen"?, "emotion": "natural"|"angry"|"sad"|"happy"|"fear"|"surprise"?,
+     "speed": 1.0?,                              # 0.5 - 2.0
      "normalize": true?,                        # numbers / dates / abbreviations -> Badini words first
      "ref_audio": "<base64 wav>"?, "ref_text": "..."?}   # your own reference clip instead of a bundled voice
 Output:
@@ -96,14 +97,14 @@ def chunk_text(text, soft_words=60, hard_words=90):
     return chunks
 
 
-def generate_piece(model, piece, prompt):
+def generate_piece(model, piece, prompt, speed=None):
     """One piece of text -> numpy audio. The model now and then fails or returns almost empty audio for a
     normal sentence (the same request works next time): try up to 3 times and keep the longest result."""
-    min_seconds = max(0.3, 0.03 * len(piece))
+    min_seconds = max(0.3, 0.03 * len(piece) / (speed or 1.0))
     best, best_s, last_error = None, -1.0, None
     for attempt in range(3):
         try:
-            audio = model.generate(text=piece, language=LANGUAGE, voice_clone_prompt=prompt)[0]
+            audio = model.generate(text=piece, language=LANGUAGE, voice_clone_prompt=prompt, speed=speed)[0]
         except Exception as e:
             last_error = e
             print(f"[tts] attempt {attempt + 1} failed: {type(e).__name__}: {e}\n{traceback.format_exc()}", flush=True)
@@ -125,6 +126,11 @@ def handler(job):
         return {"ok": False, "error": "Missing 'text'."}
     if len(text) > MAX_CHARS:
         return {"ok": False, "error": f"Text is too long ({len(text)} characters, max {MAX_CHARS})."}
+    try:
+        speed = min(2.0, max(0.5, float(inp.get("speed") or 1.0)))
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "'speed' must be a number between 0.5 and 2."}
+    speed = None if abs(speed - 1.0) < 1e-6 else speed   # None = the model's own natural pace
     voice = inp.get("voice", "hayfa")
     emotion = inp.get("emotion", "natural")
     custom_wav = None
@@ -148,7 +154,7 @@ def handler(job):
             prompt = get_prompt(model, voice, emotion)
 
         spoken = prepare_text(text) if inp.get("normalize", True) else text
-        pieces = [generate_piece(model, p, prompt) for p in chunk_text(spoken)]
+        pieces = [generate_piece(model, p, prompt, speed) for p in chunk_text(spoken)]
         import numpy as np
         audio = np.concatenate(pieces) if len(pieces) > 1 else pieces[0]
 
