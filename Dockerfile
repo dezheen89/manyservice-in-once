@@ -67,7 +67,8 @@ PY
 
 RUN python -m venv --system-site-packages /venvs/tts \
  && python -m venv --system-site-packages /venvs/w2v \
- && python -m venv --system-site-packages /venvs/whisper
+ && python -m venv --system-site-packages /venvs/whisper \
+ && python -m venv --system-site-packages /venvs/omnivoice
 
 # ── Text-to-speech: CosyVoice3 (transformers 4.51.3) ──────────────────────
 COPY reqs/tts.txt /app/reqs/tts.txt
@@ -90,6 +91,12 @@ COPY reqs/whisper.txt /app/reqs/whisper.txt
 RUN /venvs/whisper/bin/pip install --default-timeout=200 -r /app/reqs/whisper.txt
 RUN /venvs/whisper/bin/python -c "import transformers, faster_whisper, ctranslate2, runpod; print('whisper import check ok', transformers.__version__)"
 
+# ── Text-to-speech: OmniVoice Badini fine-tune (transformers >= 5.3, shared torch 2.7.1) ──
+COPY reqs/omnivoice.txt /app/reqs/omnivoice.txt
+RUN /venvs/omnivoice/bin/pip install --default-timeout=200 -r /app/reqs/omnivoice.txt
+# Guard: the venv must keep using the shared torch 2.7.1+cu128 (omnivoice needs torch>=2.4 only).
+RUN /venvs/omnivoice/bin/python -c "import torch, transformers, omnivoice; print('omnivoice venv torch', torch.__version__, 'transformers', transformers.__version__); assert torch.__version__.startswith('2.7.1'), torch.__version__"
+
 # ── Model weights, baked in at build time ─────────────────────────────────
 # HF_TOKEN comes from a BuildKit secret (not a build arg), so it never ends
 # up in this public image's layers or `docker history`.
@@ -104,6 +111,10 @@ RUN --mount=type=secret,id=hf_token,required=false \
 RUN --mount=type=secret,id=hf_token,required=false \
     HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || true)" MODEL_ID="$W2V_MODEL_ID" \
     /venvs/w2v/bin/python /app/downloads/download_w2v.py
+
+ENV OMNIVOICE_HF_HOME=/app/models/omnivoice_hf
+RUN HF_HOME="$OMNIVOICE_HF_HOME" MODEL_DIR=/app/models/omnivoice \
+    /venvs/omnivoice/bin/python /app/downloads/download_omnivoice.py
 
 # Whisper weights come from the stage at the top of this file. Same path as in
 # that image (/app/model_cache), because its MODEL_PATH file records absolute

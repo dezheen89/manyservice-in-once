@@ -1,12 +1,12 @@
 """RunPod serverless entrypoint for the combined image.
 
-One worker, three services — text-to-speech (CosyVoice3), and two speech-to-
-text models (w2v-bert, Whisper Turbo). Each service runs in its own
+One worker, four services — text-to-speech (CosyVoice3 and the Badini OmniVoice fine-tune), and two
+speech-to-text models (w2v-bert, Whisper Turbo). Each service runs in its own
 virtualenv as a child process that is started the first time a job for it
 arrives, so a worker only pays the load time and GPU memory for the
 services it is actually asked to run.
 
-Routing: job["input"]["service"] is "tts", "w2v" or "whisper". For backwards
+Routing: job["input"]["service"] is "tts", "omnivoice", "w2v" or "whisper". For backwards
 compatibility, input with a "text" field and no "service" is treated as TTS.
 """
 
@@ -28,6 +28,14 @@ SERVICES = {
         "env": {
             "MODEL_DIR": "/app/models/tts",
             "PYTHONPATH": "/app/services/tts:/app/CosyVoice:/app/CosyVoice/third_party/Matcha-TTS",
+        },
+    },
+    "omnivoice": {
+        "python": "/venvs/omnivoice/bin/python",
+        "env": {
+            "MODEL_DIR": "/app/models/omnivoice",
+            "HF_HOME": "/app/models/omnivoice_hf",
+            "PYTHONPATH": "/app/services/omnivoice",
         },
     },
     "w2v": {

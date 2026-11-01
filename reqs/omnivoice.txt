@@ -1,0 +1,5 @@
+omnivoice
+soundfile
+numpy
+accelerate
+huggingface_hub
